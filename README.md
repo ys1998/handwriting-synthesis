@@ -1,6 +1,6 @@
 # EE769: Introduction to Machine Learning
 ## Course Project
-**Team :** Yash Shah ([@ys1998](https://github.com/ys1998)) and R. Sudarsanan ([@]())
+**Team :** Yash Shah ([@ys1998](https://github.com/ys1998)) and R. Sudarsanan ([@RSudarsanan](https://github.com/RSudarsanan))
 
 **Title :** Handwriting Synthesis and Text Prediction using RNNs
 
