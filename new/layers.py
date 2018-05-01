@@ -8,7 +8,7 @@ import numpy as np
 Class description for attention window layer.
 """
 class WindowLayer(object):
-	def __init__(self, n_gaussians, n_chars, C):
+	def __init__(self, n_gaussians, n_chars, str_len, C):
 		# Number of gaussians used in the mixture
 		self.n_gaussians = K = n_gaussians
 		# Number of distinct characters in dataset
@@ -16,7 +16,7 @@ class WindowLayer(object):
 		# One-hot encoded matrix of input string
 		self.encoded_string = C
 		# Length of input string
-		self.string_length = U = tf.shape(C).eval()[1]
+		self.string_length = U = str_len
 		# Matrix to store numbers from 0 to string_length - 1
 		# Create counter matrix such that it can be broadcasted later
 		self.cntr_matrix = tf.reshape(tf.range(U, dtype=tf.float32), [1, 1, -1])
@@ -30,7 +30,7 @@ class WindowLayer(object):
 		multiplication, and hence represented by a single FC layer.
 		- Weights learn both these tasks themselves during training.
 		"""
-		with tf.variable_scope(name='WindowLayer', reuse=reuse):
+		with tf.variable_scope('WindowLayer', reuse=reuse):
 			alpha = tf.layers.dense(combined_x, 
 									activation = tf.exp,
 									units = self.n_gaussians, 
@@ -65,10 +65,10 @@ class WindowLayer(object):
 			w = tf.squeeze(tf.matmul(phi, self.encoded_string), axis=1)
 
 			# Return computed value(s)
-			return w, expd_kappa, tf.squeeze(phi, axis=1)
+			return w, kappa, tf.squeeze(phi, axis=1)
 		
-		def output_size(self):
-			return [self.n_chars, self.n_gaussian]
+	def output_size(self):
+		return [self.n_chars, self.n_gaussians]
 
 """
 Class description for Mixture Density Network applied to the outputs 
@@ -88,7 +88,7 @@ class MDNLayer(object):
 		multiplication, and hence represented by a single FC layer.
 		- Weights learn both these tasks themselves during training.
 		"""
-		with tf.variable_scope(name="MDNLayer", reuse=reuse):
+		with tf.variable_scope("MDNLayer", reuse=reuse):
 			# Express desired variables in terms of combined input
 			e = tf.layers.dense(combined_x, units=1, kernel_initializer=tf.random_normal_initializer(stddev=1e-3), name="e")
 			pi = tf.layers.dense(combined_x, units=self.n_gaussians, kernel_initializer=tf.random_normal_initializer(stddev=1e-3), name="pi")
@@ -113,8 +113,8 @@ class MDNLayer(object):
 Class description for the LSTM network used in hidden layers.
 """
 class HiddenLayers(tf.nn.rnn_cell.RNNCell):
-	def __init__(self, n_layers, n_units, batch_size, state_size, window_layer):
-		super(RNNCell, self).__init__()
+	def __init__(self, n_layers, n_units, batch_size, window_layer):
+		super(HiddenLayers, self).__init__()
 		# Number of layers in LSTM network
 		self.n_layers = n_layers
 		# Number of LSTM cells in each layer
@@ -123,9 +123,8 @@ class HiddenLayers(tf.nn.rnn_cell.RNNCell):
 		self.window_layer = window_layer
 		# Size of batch and state for each LSTM cell
 		self.batch_size = batch_size
-		self.state_size = state_size
 
-		with tf.variable_scope(name="LSTMNetwork", reuse=None):
+		with tf.variable_scope("LSTMNetwork", reuse=None):
 			# Define LSTM nodes
 			self.lstm_nodes = [tf.nn.rnn_cell.LSTMCell(num_units=n_units, state_is_tuple=True) for _ in range(n_layers)]
 			# Initialize states (cell, hidden) for these nodes
@@ -136,7 +135,7 @@ class HiddenLayers(tf.nn.rnn_cell.RNNCell):
 			# Initialize states for window layer output and previous value of kappa
 			self.states += [tf.Variable(tf.zeros([batch_size, s]), trainable=False) for s in self.window_layer.output_size()]
 		
-	def __call__(self, x, prev_states):
+	def __call__(self, x, prev_states, **kwargs):
 		# Extract previous output/value of window layer and kappa
 		prev_window, kappa = prev_states[-2:]
 		# List for storing current states 
@@ -154,7 +153,7 @@ class HiddenLayers(tf.nn.rnn_cell.RNNCell):
 				combined_x = tf.concat([x, prev_window] + prev_output, axis=1)
 				# Pass combined input to lstm layer and store the output and new states
 				output, new_state_tuple = self.lstm_nodes[n](combined_x, (prev_states[2*n], prev_states[2*n+1]))
-				prev_output = list(output)
+				prev_output = [output]
 				curr_states.extend(list(new_state_tuple))
 			# Update 'prev_window' and 'kappa' using the output of first layer (i.e. n=0)
 			if n == 0:
@@ -167,3 +166,7 @@ class HiddenLayers(tf.nn.rnn_cell.RNNCell):
 	@property
 	def state_size(self):
 		return [self.n_units] * self.n_layers * 2 + self.window_layer.output_size()
+
+	@property
+	def output_size(self):
+		return self.n_units

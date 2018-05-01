@@ -16,6 +16,7 @@ Returns:
     extracted data from specified files.
 """
 def load_data(string_file, points_file, batch_size):
+	assert batch_size > 0, "Invalid batch size."
 	a = np.load(points_file, encoding='bytes')
 	n_batches = len(a) // batch_size
 	
@@ -24,16 +25,26 @@ def load_data(string_file, points_file, batch_size):
 		texts = f.readlines()
 	strings = [s.strip('\n') for s in texts]
 	
-	# Encode strings to one-hot vector(s)
-	char_mapping = map_strings(strings, path='save/mapping.pkl')
-	lst_C = [generate_char_encoding(s, char_mapping) for s in strings]
-
 	# Obtain maximum sequence length
 	max_seq_len = max([pt.shape[0] for pt in a])
+	max_str_len = max([len(s) for s in strings])
+	
+	# Encode strings to one-hot vector(s)
+	char_mapping = map_strings(strings, path='save/mapping')
+	lst_C = [generate_char_encoding(s, char_mapping, max_str_len) for s in strings]
+
 	# Convert all sequences to max_seq_len by padding with [0., 0., 1] 
 	# i.e. zero offset and end-of-stroke is true
-	points = 
-	return (strings, pts)
+	for idx, pt in enumerate(a):
+		if pt.shape[0] < max_seq_len:
+			a[idx] = np.concatenate([pt, np.tile([0,0,1], [max_seq_len - pt.shape[0], 1])], axis=0)
+	
+	sts = []; pts = []
+	# Group into batches
+	for bn in range(n_batches):
+		sts.append(np.stack(lst_C[bn*batch_size:(bn+1)*batch_size]))
+		pts.append(np.stack(a[bn*batch_size:(bn+1)*batch_size]))
+	return (sts, pts)
 
 """
 Function to convert string to one-hot encoded matrix.
@@ -43,13 +54,17 @@ Args:
 Returns:
     one-hot encoded matrix for given string.
 """
-def generate_char_encoding(string, char_mapping):
+def generate_char_encoding(string, char_mapping, length=None):
 	n_chars = len(char_mapping)
 	indices = []
-	for idx, c in enumerate(string):
+	for c in string:
 		assert c in char_mapping, "Unknown character encountered."
 		indices.append(char_mapping[c])
-	return tf.transpose(tf.one_hot(indices, n_chars))
+	one_hot = np.zeros([len(string), n_chars])
+	one_hot[list(range(len(string))), indices] = 1.0
+	if length is not None and length > one_hot.shape[0]:
+		one_hot = np.concatenate([one_hot, np.zeros([length - one_hot.shape[0], n_chars])], axis=0)
+	return one_hot
 
 """
 Function to map characters from a collection of strings to 
@@ -62,7 +77,7 @@ Returns:
 """
 def map_strings(lst_str, path=None):
 	if os.path.exists(path):
-		with open(path, 'r') as f:
+		with open(path, 'rb') as f:
 			mapping = cPickle.load(f)
 		return mapping
 	else:
@@ -74,6 +89,6 @@ def map_strings(lst_str, path=None):
 					mapping[c] = cntr
 					cntr += 1
 		if path is not None:
-			with open(path, 'w') as f:
+			with open(path, 'wb') as f:
 				cPickle.dump(mapping, f)
 		return mapping
