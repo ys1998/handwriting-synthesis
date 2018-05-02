@@ -9,11 +9,11 @@ from six.moves import cPickle
 """
 Function to load data from disk and preprocess it.
 Args:
-    string_file - path where strings are stored
-    points_file - path where corresponding points are saved
+	string_file - path where strings are stored
+	points_file - path where corresponding points are saved
 	batch_size - size of each batch
 Returns:
-    extracted data from specified files.
+	extracted data from specified files.
 """
 def load_data(string_file, points_file, batch_size):
 	assert batch_size > 0, "Invalid batch size."
@@ -49,22 +49,22 @@ def load_data(string_file, points_file, batch_size):
 """
 Function to generate the input for the prediction step
 Args:
-    string - the string which has to be fed to the model
-    start_pt - a np.array of [x, y, end_of_stroke]
-    batch_size - size of each batch
+	string - the string which has to be fed to the model
+	start_pt - a np.array of [x, y, end_of_stroke]
+	batch_size - size of each batch
 Returns:
-    tuple of encoded strings and the points
+	tuple of encoded strings and the points
 """
 def prediction_input(string, start_pt, batch_size):
-        assert batch_size > 0, "Invalid batch_size"
-        strings = []
-        strings.append(string)
-        for i in range(batch_size - 1):
-                strings.append('')
-        max_seq_len = 1
-        max_str_len = len(string)
+	assert batch_size > 0, "Invalid batch_size"
+	strings = []
+	strings.append(string)
+	for i in range(batch_size - 1):
+		strings.append('')
+	max_seq_len = 1
+	max_str_len = len(string)
 	a = start_pt
-        a.resize([1, 1, 3])
+	a.resize([1, 1, 3])
 
 	# Encode strings to one-hot vector(s)
 	char_mapping = map_strings(strings, path='save/mapping')
@@ -72,29 +72,22 @@ def prediction_input(string, start_pt, batch_size):
 
 	# Convert all sequences to max_seq_len by padding with [0., 0., 1] 
 	# i.e. zero offset and end-of-stroke is true
-#	for idx, pt in enumerate(a):
-#		if pt.shape[0] < max_seq_len:
-#			a[idx] = np.concatenate([pt, np.tile([0,0,1], [max_seq_len - pt.shape[0], 1])], axis=0)
-	
-        padding = np.tile([0, 0, 1], [batch_size-1, 1])
-        padding.resize(batch_size-1, 1, 3)
-        pts = np.concatenate([a, padding], axis=0)
+	padding = np.tile([0, 0, 1], [batch_size-1, 1])
+	padding.resize(batch_size-1, 1, 3)
+	pts = np.concatenate([a, padding], axis=0)
 
-        sts = np.stack(lst_C[0:-1])
+	sts = np.stack(lst_C[0:-1])
 
-#	for bn in range(n_batches):
-#		sts.append(np.stack(lst_C[bn*batch_size:(bn+1)*batch_size]))
-#		pts.append(np.stack(a[bn*batch_size:(bn+1)*batch_size]))
 	return (lst_C, pts)
 
 
 """
 Function to convert string to one-hot encoded matrix.
 Args:
-    string - string to be encoded
-    char_mapping - character -> number mapping
+	string - string to be encoded
+	char_mapping - character -> number mapping
 Returns:
-    one-hot encoded matrix for given string.
+	one-hot encoded matrix for given string.
 """
 def generate_char_encoding(string, char_mapping, length=None):
 	n_chars = len(char_mapping)
@@ -112,10 +105,10 @@ def generate_char_encoding(string, char_mapping, length=None):
 Function to map characters from a collection of strings to 
 a number for one-hot encoding.
 Args:
-    lst_str - list of strings to be mapped
-    path - path where generated mapping is saved
+	lst_str - list of strings to be mapped
+	path - path where generated mapping is saved
 Returns:
-    character -> number mapping for given strings.
+	character -> number mapping for given strings.
 """
 def map_strings(lst_str, path=None):
 	if os.path.exists(path):
