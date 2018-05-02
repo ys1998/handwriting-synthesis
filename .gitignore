@@ -1,0 +1,4 @@
+ngram-lm
+vocab
+ptb.*.txt
+counts.txt
