@@ -107,4 +107,4 @@ class SynthesisModel(object):
 					print("Epoch %d/%d, batch %d/%d, loss %.4f, time %.3f sec" % (n+1, n_epochs, batch_cntr, len(C), loss, delta))
 					batch_cntr += 1
 				# Save model after every epoch
-				saver.save(sess, save_path, global_step=self.params['step_cntr'].eval())
+				saver.save(sess, save_path, global_step=self.params['steps'].eval())
