@@ -94,7 +94,7 @@ class SynthesisModel(object):
 			if restore:
 				saver.restore(sess, tf.train.latest_checkpoint(load_path))
 				st_epoch = sess.run(self.params['steps']) // len(C)
-				print("Loaded trained model, starting from epoch %d."%st_epoch)
+				print("Loaded trained model, starting from epoch %d."%(st_epoch+1))
 			else:
 				st_epoch = 0
 
