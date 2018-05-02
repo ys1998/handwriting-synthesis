@@ -5,6 +5,8 @@ import tensorflow as tf
 import numpy as np
 import time
 from layers import WindowLayer, HiddenLayers, MDNLayer
+import utilities
+import matplotlib.pyplot as plt
 
 class SynthesisModel(object):
 	def __init__(self, n_layers=1, batch_size=100, num_units=100, K=10, M=20, n_chars=80, str_len=0, sampling_bias = 0.0):
@@ -108,3 +110,68 @@ class SynthesisModel(object):
 					batch_cntr += 1
 				# Save model after every epoch
 				saver.save(sess, save_path, global_step=self.params['steps'].eval())
+
+        def gaussian_sample(self, e, mu_x, mu_y, sg_x, sg_y, rho):
+                cov = np.array([ [sg_x*sg_x, sg_x*sg_y*rho],
+                                 [sg_x*sg_y*rho, sg_y*sg_y]])
+                mean = np.array([mu_x, mu_y])
+                x,y = np.random.multivariate_normal(mean. cov)
+                end_stroke = np.random.binomial(1, e)
+                return np.array([x, y, end])
+
+        def generate(self, string, load_path=None):
+                char_mapping = utilities.map_strings([], 'save/mapping')
+
+                # Encoding the input string
+                one_hot = utilities.generate_char_encoding(string, char_mapping)
+                inputs = utilities.prediction_input(string, np.array([0, 0, 0]), self.batch_size)
+                self.phi = []
+                self.coordinates = []
+                self.coordinates.append(np.array([0, 0, 0]))
+                writing_flag = True
+                str_len = len(string)
+                counter = 0
+                phi_data = []
+
+                # Creating the session
+                with tf.Session(graph=self.graph) as sess:
+                        saver = tf.train.Saver(max_to_keep = 2)
+                        
+                        # Loading the trained params
+                        saver.restore(sess, tf.train.latest_checkpoint(load_path))
+                        while(writing_flag && counter < str_len*100)
+                                e, pi, mu_x, mu_y, sigma_x, sigma_y, rho, phi = sess.run([self.parmas['e'], 
+                                        self.parmas['pi'], self.parmas['mu_x'],
+                                        self.parmas['mu_y'], self.parmas['sigma_x'],
+                                        self.parmas['sigma_y'], self.parmas['rho'],
+                                        self.parmas['phi']],
+                                        feed_dict = {self.params['input']:inputs[1],
+                                                self.params['C']:c})
+
+
+                                phi_data.append(phi[0, :])
+                                g = np.random.choice(np.arrange(pi.shape[1]), p=pi[0])
+                                point = self.gaussian_sample(e[0,0], mu_x[0, g], mu_y[0, g],
+                                                sigma_x[0, g], sigma_y[0, g], rho[0, g])
+                                self.coordinates.append(point)
+                                
+                                finish = tf.cast(phi[0, 0, -1] > tf.reduce_max(phi[0, 0, :-1]), tf.float)
+                                if finish < 0.8:
+                                        inputs = utilities.prediction_input(string, point, self.batch_size)
+                                else:
+                                        writing_flag = false
+                                        print('\n Sampling done')
+
+                #plotting
+                
+                points = [[[],[]]]
+                for pts in self.coordinates:
+                        points[-1][0].append(pts[0])
+                        points[-1][1].append(pts[1])
+                        if pts[2] == 1.:
+                                points.append([[],[]])
+
+                plt.figure()
+                for pts in points:
+                        plt.plot(pts[0], pts[1])
+                plt.show()
