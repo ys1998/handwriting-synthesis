@@ -65,6 +65,7 @@ class SynthesisModel(object):
 				'prediction':obtained_output, 
 				'steps':self.step_cntr, 
 				'incr_step':self.step_cntr.assign_add(1),
+				'phi':final_states[-3],
 				'e':e, 'pi':pi, 'mu_x':mu_x, 'mu_y':mu_y, 
 				'sigma_x':sigma_x, 'sigma_y':sigma_y, 'rho':rho,
 				}

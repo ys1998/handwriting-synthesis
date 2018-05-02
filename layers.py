@@ -68,7 +68,7 @@ class WindowLayer(object):
 			return w, kappa, tf.squeeze(phi, axis=1)
 		
 	def output_size(self):
-		return [self.n_chars, self.n_gaussians]
+		return [self.string_length, self.n_chars, self.n_gaussians]
 
 """
 Class description for Mixture Density Network applied to the outputs 
@@ -157,9 +157,9 @@ class HiddenLayers(tf.nn.rnn_cell.RNNCell):
 				curr_states.extend(list(new_state_tuple))
 			# Update 'prev_window' and 'kappa' using the output of first layer (i.e. n=0)
 			if n == 0:
-				prev_window, kappa, _ = self.window_layer(output, kappa) 
+				prev_window, kappa, phi = self.window_layer(output, kappa) 
 		# Add window layer output and kappa to current states list
-		curr_states.extend([prev_window, kappa])
+		curr_states.extend([phi, prev_window, kappa])
 		return output, curr_states
 
 	# Override properties
