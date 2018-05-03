@@ -5,6 +5,16 @@ import tensorflow as tf
 import numpy as np
 import time
 from layers import WindowLayer, HiddenLayers, MDNLayer
+from utilities import *
+import matplotlib.pyplot as plt
+
+def gaussian_sample(e, mu_x, mu_y, sg_x, sg_y, rho):
+	cov = np.array([ [sg_x*sg_x, sg_x*sg_y*rho],
+					 [sg_x*sg_y*rho, sg_y*sg_y]])
+	mean = np.array([mu_x, mu_y])
+	x,y = np.random.multivariate_normal(mean. cov)
+	end_stroke = np.random.binomial(1, e)
+	return np.array([x, y, end])
 
 class SynthesisModel(object):
 	def __init__(self, n_layers=1, batch_size=100, num_units=100, K=10, M=20, n_chars=80, str_len=0, sampling_bias = 0.0):
@@ -54,7 +64,8 @@ class SynthesisModel(object):
 			val = val * (corr_e*e + (1-corr_e)*(1-e))
 			# Take sum over all timesteps and average over all batch members, 'M' gaussians
 			# Dimension of 'val' is [batch_size, seq_len, n_gaussians_mdn]
-			loss = tf.reduce_mean(-tf.log(epsilon + tf.reduce_sum(val, axis=2)))
+			# Averaging step wise to prevent overflow
+			loss = tf.reduce_mean(tf.reduce_mean(-tf.log(epsilon + tf.reduce_sum(val, axis=2)), axis=1), axis=0)
 
 			# Save these parameters/variables for accessing later
 			self.params = {
@@ -85,7 +96,7 @@ class SynthesisModel(object):
 			
 			# Clip gradients to prevent 'nan' values
 			grads, variables = map(list, zip(*optimizer.compute_gradients(self.params['loss'])))
-			grads, _ = tf.clip_by_global_norm(grads, 5.0)
+			grads, _ = tf.clip_by_global_norm(grads, 3.0)
 			backprop = optimizer.apply_gradients(zip(grads, variables))
 
 			sess.run(tf.global_variables_initializer())
@@ -108,3 +119,62 @@ class SynthesisModel(object):
 					batch_cntr += 1
 				# Save model after every epoch
 				saver.save(sess, save_path, global_step=self.params['steps'].eval())
+
+	def generate(self, string, load_path=None):
+		char_mapping = map_strings([], 'save/mapping')
+
+		# Encoding the input string
+		one_hot = generate_char_encoding(string, char_mapping)
+		inputs = prediction_input(string, np.array([0, 0, 0]), self.batch_size)
+		phi = []
+		coordinates = []
+		coordinates.append(np.array([0, 0, 0]))
+		writing_flag = True
+		str_len = len(string)
+		counter = 0
+		phi_data = []
+
+		# Creating the session
+		with tf.Session(graph=self.graph) as sess:
+			saver = tf.train.Saver(max_to_keep = 2)
+				
+			# Loading the trained params
+			saver.restore(sess, tf.train.latest_checkpoint(load_path))
+			while(writing_flag and counter < str_len*100):
+				e, pi, mu_x, mu_y, sigma_x, sigma_y, rho, phi = sess.run([self.parmas['e'], 
+					self.parmas['pi'], self.parmas['mu_x'],
+					self.parmas['mu_y'], self.parmas['sigma_x'],
+					self.parmas['sigma_y'], self.parmas['rho'],
+					self.parmas['phi']],
+					feed_dict = {
+						self.params['input']:inputs[1],
+						self.params['C']:c
+						}
+					)
+
+
+				phi_data.append(phi[0, :])
+				g = np.random.choice(np.arrange(pi.shape[1]), p=pi[0])
+				point = gaussian_sample(e[0,0], mu_x[0, g], mu_y[0, g],
+								sigma_x[0, g], sigma_y[0, g], rho[0, g])
+				coordinates.append(point)
+				
+				finish = tf.cast(phi[0, 0, -1] > tf.reduce_max(phi[0, 0, :-1]), tf.float)
+				if finish < 0.8:
+					inputs = prediction_input(string, point, self.batch_size)
+				else:
+					writing_flag = false
+					print('\nSampling done')
+
+		#plotting
+		points = [[[],[]]]
+		for pts in coordinates:
+			points[-1][0].append(pts[0])
+			points[-1][1].append(pts[1])
+			if pts[2] == 1.:
+				points.append([[],[]])
+
+		plt.figure()
+		for pts in points:
+			plt.plot(pts[0], pts[1])
+		plt.show()

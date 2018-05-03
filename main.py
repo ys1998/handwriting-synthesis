@@ -4,7 +4,7 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = "3"
 import numpy as np
 import sys
 from model import SynthesisModel
-from utilities import load_data
+from utilities import *
 from argparse import ArgumentParser
 
 parser = ArgumentParser()
@@ -21,6 +21,7 @@ parser.add_argument('--bias', action='store', help='bias towards choosing high p
 parser.add_argument('--batch_size', action='store', help='batch size for training', type=int, default=50)
 parser.add_argument('--lr', action='store', help='initial learning rate', type=float, default=1e-6)
 parser.add_argument('--n_epochs', action='store', help='number of epochs of training', type=int, default=50)
+parser.add_argument('--line', action='store', help='input string for handwriting synthesis', type=str, default='I am cool')
 args = parser.parse_args()
 
 def main(args):
@@ -54,7 +55,20 @@ def main(args):
 				save_path=args.save_dir
 				)
 	elif args.mode == 'generate':
-		pass
+		# Hack to get number of characters
+		char_mapping = map_strings([], 'save/mapping')
+		model = SynthesisModel(
+			n_layers=args.n_layers, 
+			batch_size=args.batch_size, 
+			num_units=args.lstm_size, 
+			K=args.K,
+			M=args.M,
+			n_chars=len(char_mapping), 
+			str_len=len(args.line),  
+			sampling_bias=args.bias
+			)
+		assert args.load_dir is not None, "Invalid load_dir."
+		model.generate(args.line, args.load_dir)
 
 if __name__=='__main__':
 	main(args)
