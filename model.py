@@ -118,7 +118,11 @@ class SynthesisModel(object):
 					print("Epoch %d/%d, batch %d/%d, loss %.4f, time %.3f sec" % (n+1, n_epochs, batch_cntr, len(C), loss, delta))
 					batch_cntr += 1
 				# Save model after every epoch
+<<<<<<< HEAD
 				saver.save(sess, save_path, global_step=self.params['steps'].eval())
+=======
+				saver.save(sess, save_path)
+>>>>>>> 0f847ae0231ccdc1b31ffffdbc2fe9d17e80c92b
 
 	def generate(self, string, load_path=None):
 		char_mapping = map_strings([], 'save/mapping')
