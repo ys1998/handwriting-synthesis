@@ -15,9 +15,10 @@ Args:
 Returns:
 	extracted data from specified files.
 """
-def load_data(string_file, points_file, batch_size):
+def load_data(string_file, points_file, save_dir, batch_size, max_str_len):
 	assert batch_size > 0, "Invalid batch size."
-	a = np.load(points_file, encoding='bytes')
+	temp = np.load(points_file, encoding='bytes')
+	a = np.array([data[:,[1,2,0]] for data in temp])
 	n_batches = len(a) // batch_size
 	
 	strings = []
@@ -27,10 +28,9 @@ def load_data(string_file, points_file, batch_size):
 	
 	# Obtain maximum sequence length
 	max_seq_len = max([pt.shape[0] for pt in a])
-	max_str_len = max([len(s) for s in strings])
 	
 	# Encode strings to one-hot vector(s)
-	char_mapping = map_strings(strings, path='save/mapping')
+	char_mapping = map_strings(strings, path=os.path.join(save_dir, 'mapping'))
 	lst_C = [generate_char_encoding(s, char_mapping, max_str_len) for s in strings]
 
 	# Convert all sequences to max_seq_len by padding with [0., 0., 1] 
@@ -49,37 +49,22 @@ def load_data(string_file, points_file, batch_size):
 """
 Function to generate the input for the prediction step
 Args:
-	string - the string which has to be fed to the model
 	start_pt - a np.array of [x, y, end_of_stroke]
 	batch_size - size of each batch
 Returns:
-	tuple of encoded strings and the points
+	padded tensor of points
 """
-def prediction_input(string, start_pt, batch_size):
+def prediction_input(start_pt, batch_size):
 	assert batch_size > 0, "Invalid batch_size"
-	strings = []
-	strings.append(string)
-	for i in range(batch_size - 1):
-		strings.append('')
-	max_seq_len = 1
-	max_str_len = len(string)
 	a = start_pt
 	a.resize([1, 1, 3])
 
-	# Encode strings to one-hot vector(s)
-	char_mapping = map_strings(strings, path='save/mapping')
-	lst_C = [generate_char_encoding(s, char_mapping, max_str_len) for s in strings]
-
-	# Convert all sequences to max_seq_len by padding with [0., 0., 1] 
-	# i.e. zero offset and end-of-stroke is true
-	padding = np.tile([0, 0, 1], [batch_size-1, 1])
-	padding.resize(batch_size-1, 1, 3)
+	# Pad starting point with zero vectors to convert it
+	# into dimension [batch_size, 1, 3]
+	padding = np.tile([0, 0, 0], [batch_size - 1, 1])
+	padding.resize(batch_size - 1, 1, 3)
 	pts = np.concatenate([a, padding], axis=0)
-
-	sts = np.stack(lst_C[0:-1])
-
-	return (lst_C, pts)
-
+	return pts
 
 """
 Function to convert string to one-hot encoded matrix.
