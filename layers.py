@@ -69,6 +69,7 @@ class WindowLayer(object):
 		
 	def output_size(self):
 		return [self.string_length, self.n_chars, self.n_gaussians]
+		# return [self.n_chars, self.n_gaussians]
 
 """
 Class description for Mixture Density Network applied to the outputs 
@@ -98,16 +99,12 @@ class MDNLayer(object):
 			sigma_y = tf.layers.dense(combined_x, units=self.n_gaussians, kernel_initializer=tf.random_normal_initializer(stddev=1e-3), name="sigma_y")
 			rho = tf.layers.dense(combined_x, units=self.n_gaussians, kernel_initializer=tf.random_normal_initializer(stddev=1e-3), name="rho")
 			
-			# Apply transformation functions on each variable
-			e = tf.nn.sigmoid(e)
-			rho = tf.tanh(rho)
-			# Apply bias to variables in their transformation functions for biased sampling
-			pi = tf.nn.softmax(pi * (1 + bias))
-			sigma_x = tf.exp(sigma_x - bias)
-			sigma_y = tf.exp(sigma_y - bias)
-
-			# Return computed values
-			return e, pi, mu_x, mu_y, sigma_x, sigma_y, rho
+			return \
+				tf.nn.sigmoid(e), \
+				tf.nn.softmax(pi * (1.0 + bias)), \
+				mu_x, mu_y, \
+				tf.exp(sigma_x - bias), tf.exp(sigma_y - bias), \
+				tf.nn.tanh(rho)
 
 """
 Class description for the LSTM network used in hidden layers.
@@ -128,12 +125,12 @@ class HiddenLayers(tf.nn.rnn_cell.RNNCell):
 			# Define LSTM nodes
 			self.lstm_nodes = [tf.nn.rnn_cell.LSTMCell(num_units=n_units, state_is_tuple=True) for _ in range(n_layers)]
 			# Initialize states (cell, hidden) for these nodes
-			self.states = [x for _ in range(n_layers) 
-								for x in 
-									(tf.Variable(tf.zeros([batch_size, n_units]), trainable=False),
-									tf.Variable(tf.zeros([batch_size, n_units]), trainable=False))]
-			# Initialize states for window layer output and previous value of kappa
-			self.states += [tf.Variable(tf.zeros([batch_size, s]), trainable=False) for s in self.window_layer.output_size()]
+			# self.states = [x for _ in range(n_layers) 
+			# 					for x in 
+			# 						(tf.Variable(tf.zeros([batch_size, n_units]), trainable=False),
+			# 						tf.Variable(tf.zeros([batch_size, n_units]), trainable=False))]
+			# # Initialize states for window layer output and previous value of kappa
+			self.states = [tf.Variable(tf.zeros([batch_size, s]), trainable=False) for s in self.state_size]
 		
 	def __call__(self, x, prev_states, **kwargs):
 		# Extract previous output/value of window layer and kappa
@@ -142,6 +139,8 @@ class HiddenLayers(tf.nn.rnn_cell.RNNCell):
 		curr_states = []
 		# List for storing output of previous *layer*
 		prev_output = []
+		# Stoe phi
+		phi = None
 		for n in range(self.n_layers):
 			with tf.variable_scope("lstm_layer_%d"%(n+1), reuse=tf.AUTO_REUSE):
 				"""
@@ -169,4 +168,5 @@ class HiddenLayers(tf.nn.rnn_cell.RNNCell):
 
 	@property
 	def output_size(self):
-		return self.n_units
+		# return self.n_units
+		return [self.n_units]

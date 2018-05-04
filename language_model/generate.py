@@ -77,13 +77,13 @@ def generate(args):
 
 		# Weird construct to optimize code
 		prior_length = len(args.line.split())
-		output = [' '] * (config['length'] + prior_length)
+		output = [' '] * (args.words + prior_length)
 		for i in range(prior_length):
-			output[i] = config['prior'].split()[i]
+			output[i] = args.line.split()[i]
 
-		for i in range(config['length']):
+		for i in range(args.words):
 			if i % 100 == 0:
-				print("%d out of %d generated" % (i, config['length']))
+				print("%d out of %d generated" % (i, args.words))
 			token = weighted_pick(np.squeeze(probs))
 			if token == len(np.squeeze(probs)):
 				token = token - 1
@@ -98,8 +98,9 @@ def generate(args):
 		output = output.replace('</s>', '\n')
 		output = output + "\n"
 
-		with open(os.path.join(args.save_dir, "generate_{0}.txt".format(args.job_id)), 'w') as f:
-			f.write(output)
+		# with open(os.path.join(args.save_dir, "generate_{0}.txt".format(args.job_id)), 'w') as f:
+		# 	f.write(output)
+		print(output)
 
 
 def initialize_weights(sess, model, args, mode):

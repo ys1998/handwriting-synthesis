@@ -7,6 +7,52 @@ import os
 from six.moves import cPickle
 
 """
+Class to load batches.
+"""
+class BatchLoader(object):
+	def __init__(self, string_file, points_file, save_dir, batch_size, seq_len, max_str_len):
+		assert batch_size > 0, "Invalid batch size."
+
+		self.batch_size = batch_size
+		self.seq_len = seq_len
+
+		temp = np.load(points_file, encoding='bytes')
+		self.a = np.array([np.concatenate([np.array([[0., 0., 1.]]),data[:,[1,2,0]]], axis=0) for data in temp])
+		
+		self.strings = []
+		with open(string_file, 'r') as f:
+			texts = f.readlines()
+		self.strings = [s.strip('\n') for s in texts]
+			
+		# Encode strings to one-hot vector(s)
+		self.char_mapping = map_strings(self.strings, path=os.path.join(save_dir, 'mapping'))
+		self.lst_C = [generate_char_encoding(s, self.char_mapping, max_str_len) for s in self.strings]
+
+		self.indices = np.random.choice(len(self.a), size=batch_size, replace=False)
+		self.st_times = np.zeros(batch_size, dtype=np.int32)
+
+	def get_batch(self):
+		reset_reqd = False
+		reset = np.ones([self.batch_size, 1], dtype=np.float32)
+		batch = np.zeros([self.batch_size, self.seq_len + 1, 3], dtype=np.float32)
+		C = np.zeros([self.batch_size, self.lst_C[0].shape[0], self.lst_C[0].shape[1]], dtype=np.float32)
+		for i in range(self.batch_size):
+			if self.st_times[i] + self.seq_len + 1 > self.a[self.indices[i]].shape[0]:
+				# Need to reset this 'i'
+				reset_reqd = True
+				self.st_times[i] = 0
+				# Move to a new string
+				self.indices[i] = np.random.choice(len(self.a))
+				reset[i] = 0
+			batch[i, :, :] = self.a[self.indices[i]][self.st_times[i]:self.st_times[i]+self.seq_len+1]
+			C[i, :, :] = self.lst_C[self.indices[i]]
+			self.st_times[i] += self.seq_len
+		return batch, C, reset, reset_reqd
+
+	@property
+	def n_chars(self):
+		return self.lst_C[0].shape[1]
+"""
 Function to load data from disk and preprocess it.
 Args:
 	string_file - path where strings are stored

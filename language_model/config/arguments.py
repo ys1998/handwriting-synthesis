@@ -16,6 +16,7 @@ parser.add_argument('--mode', type=str, default="train", choices=["test", "valid
 parser.add_argument('--device', type=str, default="gpu", choices=["cpu", "gpu"], help='gpu / cpu')
 parser.add_argument('--job_id', type=str, required = True, help='ID of the current job')
 parser.add_argument('--line', type=str, action='store', help='prior for generating sentence')
+parser.add_argument('--words', type=int, action='store', help='number of words to be generated')
 
 # My additions
 parser.add_argument('--T', type=float, default=1.0, help='Temperature for softmax layer')

@@ -36,6 +36,8 @@ class SynthesisModel(object):
 			output = tf.placeholder(tf.float32, [None, None, 3], name='expected_output')
 			# Create placeholder for one-hot encoded string of dimension [batch_size, seq_length, n_chars]
 			C = tf.placeholder(tf.float32, [None, None, self.n_chars], name='C')
+			# Placeholder for reset values
+			reset = tf.placeholder(tf.float32, [None, 1], name='reset')
 
 			# Declare variable to count number of steps
 			self.step_cntr = tf.Variable(0)
@@ -45,27 +47,32 @@ class SynthesisModel(object):
 			mdn_unit = MDNLayer(n_gaussians=self.n_gaussians_mdn)
 			
 			lstm_network = HiddenLayers(n_layers=self.n_layers, n_units=self.n_units, batch_size=self.batch_size, window_layer=attention_window)
+			
+			reset_states = tf.group(*[org.assign(org*reset) for org in lstm_network.states])
+
 			# Unroll lstm network over timesteps
 			obtained_output, final_states = tf.nn.dynamic_rnn(lstm_network, inputs, initial_state=lstm_network.states)
 
-			# Pass output of LSTM network to MDN unit
-			e, pi, mu_x, mu_y, sigma_x, sigma_y, rho = mdn_unit(obtained_output, self.bias)
+			# Pass output of LSTM network to MDN unit after reshaping
+			outs = tf.reshape(obtained_output, [-1, self.n_units])
+			e, pi, mu_x, mu_y, sigma_x, sigma_y, rho = mdn_unit(outs, self.bias)
 			
 			# Calculate loss using above parameters and correct output
-			# Add a small quantity to make computations stable
-			epsilon = 1e-8 
-			corr_x, corr_y, corr_e = tf.unstack(tf.expand_dims(output, axis=3), axis=2)
-			norm_x = (corr_x - mu_x)/(sigma_x + epsilon)
-			norm_y = (corr_y - mu_y)/(sigma_y + epsilon)
-			mrho = 1 - tf.square(rho)
-			Z = norm_x**2 + norm_y**2 - 2*norm_x*norm_y*rho
-			factor = 1.0/(2*np.pi*sigma_x*sigma_y*tf.sqrt(mrho) + epsilon)
-			val = pi*factor*tf.exp(-Z/(2*mrho + epsilon))
-			val = val * (corr_e*e + (1-corr_e)*(1-e))
+			reshaped_output = tf.reshape(output, [-1, 3])
+			corr_x, corr_y, corr_e = tf.unstack(tf.expand_dims(reshaped_output, axis=2), axis=1)
+			norm_x = (corr_x - mu_x)/sigma_x
+			norm_y = (corr_y - mu_y)/sigma_y
+			mrho = 1.0 - tf.square(rho)
+			Z = tf.square(norm_x) + tf.square(norm_y) - 2.0 * rho * norm_x * norm_y
+			val = tf.exp(-Z / (2.0 * mrho)) / (2.0 * np.pi * sigma_x * sigma_y * tf.sqrt(mrho))
+			prob = corr_e * e + (1.0 - corr_e) * (1.0 - e)
+			rval = tf.reduce_sum(pi * val, axis=1)
+
 			# Take sum over all timesteps and average over all batch members, 'M' gaussians
 			# Dimension of 'val' is [batch_size, seq_len, n_gaussians_mdn]
 			# Averaging step wise to prevent overflow
-			loss = tf.reduce_mean(tf.reduce_mean(-tf.log(epsilon + tf.reduce_sum(val, axis=2)), axis=1), axis=0)
+			# Add a small quantity to make computations stable
+			loss = -tf.reduce_mean(tf.log(rval + 1e-8) + tf.log(prob + 1e-8))
 
 			with tf.variable_scope('Optimizer'):
 				# Create optimizer
@@ -83,23 +90,18 @@ class SynthesisModel(object):
 				'step':backprop, 
 				'input':inputs, 
 				'output':output, 
-				'C':C, 
-				'prediction':obtained_output, 
+				'C':C,
+				'reset':reset,
+				'reset_states':reset_states,
 				'step_cntr':self.step_cntr, 
-				'incr_step':self.step_cntr.assign_add(1),
 				'phi':final_states[-3],
 				'e':e, 'pi':pi, 'mu_x':mu_x, 'mu_y':mu_y, 
 				'sigma_x':sigma_x, 'sigma_y':sigma_y, 'rho':rho,
 				}
 	
-	def train(self, points, C, restore=False, n_epochs=50, load_path=None, save_path=None, log_path=None):
-		# Split points into training data
-		tr_d = [(pts[:,:-1,:], pts[:,1:,:]) for pts in points]
-		
+	def train(self, batch_loader, restore=False, n_epochs=50, load_path=None, save_path=None, log_path=None):
 		# Create session using generated graph 
 		with tf.Session(graph=self.graph) as sess:
-
-			# Create saver and summary writer
 			saver = tf.train.Saver(max_to_keep=2)
 			writer = tf.summary.FileWriter(log_path, sess.graph)
 			loss_summary = tf.summary.scalar('Loss', self.params['loss'])
@@ -118,30 +120,32 @@ class SynthesisModel(object):
 				st_epoch = 0
 
 			for n in range(st_epoch, n_epochs):
-				batch_cntr = 1
-				for dp, c in zip(tr_d, C):
+				for batch_cntr in range(self.batch_size):
+					# Get batch of data
+					tr_d, C, reset, reset_reqd = batch_loader.get_batch()
+					if reset_reqd:
+						sess.run(self.params['reset_states'], feed_dict={self.params['reset']:reset})
+
 					delta = time.time()
-					_, loss, merged, _ = \
+					_, loss, merged = \
 					sess.run([
 						self.params['step'], 
 						self.params['loss'], 
-						tf.summary.merge_all(),
-						self.params['incr_step']
+						tf.summary.merge_all()
 						], 
 						feed_dict={
-							self.params['input']:dp[0], 
-							self.params['output']:dp[1], 
-							self.params['C']:c
+							self.params['input']:tr_d[:,:-1,:], 
+							self.params['output']:tr_d[:,1:,:], 
+							self.params['C']:C
 							})
 					delta = time.time() - delta
-					print("Epoch %d/%d, batch %d/%d, loss %.4f, time %.3f sec" % (n+1, n_epochs, batch_cntr, len(C), loss, delta))
-					batch_cntr += 1
+					print("Epoch %d/%d, batch %d/%d, loss %.4f, time %.3f sec" % (n+1, n_epochs, batch_cntr+1, len(C), loss, delta))
 
 					# Add loss summary
 					writer.add_summary(merged, global_step=self.params['step_cntr'].eval())
 
 				# Save model after every epoch
-				saver.save(sess, save_path, global_step=self.params['steps'].eval())
+				saver.save(sess, save_path, global_step=self.params['step_cntr'].eval())
 
 	def generate(self, C, load_path=None):
 		inputs = prediction_input(np.array([0., 0., 1.]), self.batch_size)
@@ -157,30 +161,33 @@ class SynthesisModel(object):
 		with tf.Session(graph=self.graph) as sess:
 			# Loading the trained params
 			saver = tf.train.Saver(max_to_keep = 2)
+			print(load_path)
 			saver.restore(sess, tf.train.latest_checkpoint(load_path))
 			print("Restored variables ->")
 			for i in tf.global_variables():
 				print(i)
 				
 			while(writing_flag and counter < str_len*30):
-				e, pi, mu_x, mu_y, sigma_x, sigma_y, rho, phi = \
+				# e, pi, mu_x, mu_y, sigma_x, sigma_y, rho, phi = \
+				e, pi, mu_x, mu_y, sigma_x, sigma_y, rho = \
 				sess.run([
 					self.params['e'], 
 					self.params['pi'], self.params['mu_x'],
 					self.params['mu_y'], self.params['sigma_x'],
 					self.params['sigma_y'], self.params['rho'],
-					self.params['phi']],
+					self.params['phi']
+					],
 					feed_dict = {
 						self.params['input']:inputs,
 						self.params['C']:C
 						}
 					)
-				# Randomly choose a gaussian to sample from
+                # Randomly choose a gaussian to sample from
 				# Use its contribution to the mixture as its 'picking' probability
 				g = np.random.choice(np.arange(pi.shape[2]), p=pi[0,0])
 				# Sample point from 2D gaussian
-				point = gaussian_sample(e[0,0], mu_x[0, 0, g], mu_y[0, 0, g],
-								sigma_x[0, 0, g], sigma_y[0, 0, g], rho[0, 0, g])
+				point = gaussian_sample(e[0,0], mu_x[0, g], mu_y[0, g],
+								sigma_x[0, g], sigma_y[0, g], rho[0, g])
 				coordinates.append(point)
 				
 				# Check if the model has finished sampling

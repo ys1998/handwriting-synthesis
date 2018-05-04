@@ -1,0 +1,3 @@
+model_checkpoint_path: "trial1-2280"
+all_model_checkpoint_paths: "trial1-2160"
+all_model_checkpoint_paths: "trial1-2280"
