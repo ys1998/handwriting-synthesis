@@ -141,7 +141,7 @@ class SynthesisModel(object):
 					writer.add_summary(merged, global_step=self.params['step_cntr'].eval())
 
 				# Save model after every epoch
-				saver.save(sess, save_path)
+				saver.save(sess, save_path, global_step=self.params['steps'].eval())
 
 	def generate(self, C, load_path=None):
 		inputs = prediction_input(np.array([0., 0., 1.]), self.batch_size)
