@@ -2,13 +2,14 @@ import os
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = "3"
 
 import numpy as np
-import sys
+import sys, subprocess
 from model import SynthesisModel
 from utilities import *
 from argparse import ArgumentParser
+from write import create_handwriting
 
 parser = ArgumentParser()
-parser.add_argument('--mode', action='store', choices=['train','generate'], help='how the model is to be used', required=True)
+parser.add_argument('--mode', action='store', choices=['train','generate', 'predict'], help='how the model is to be used', required=True)
 parser.add_argument('--load_dir', action='store', help='directory where pretrained model exists', default=None)
 parser.add_argument('--save_dir', action='store', help='directory to save trained model', default='save/model')
 parser.add_argument('--log_dir', action='store', help='directory to save model summaries', default='logs/')
@@ -24,6 +25,8 @@ parser.add_argument('--n_epochs', action='store', help='number of epochs of trai
 parser.add_argument('--max_str_len', action='store', help='max characters in one section of input string', type=int, default=64)
 parser.add_argument('--seq_len', action='store', help='max timesteps per batch', type=int, default=128)
 parser.add_argument('--line', action='store', help='input string for handwriting synthesis', type=str, default='I am cool')
+parser.add_argument('--prior', action='store', help='prior string for text prediction', type=str, default='I am cool')
+parser.add_argument('--words', action='store', help='number of words to be predicted', type=int, default=0)
 args = parser.parse_args()
 
 def main(args):
@@ -64,23 +67,20 @@ def main(args):
 				log_path=args.log_dir
 				)
 	elif args.mode == 'generate':
-		# Hack to get number of characters
-		char_mapping = map_strings([], os.path.join(args.save_dir, 'mapping'))
-		# Generate attention window tensor 'C'
-		one_hot = generate_char_encoding(args.line, char_mapping, args.max_str_len)
-		C = np.stack([one_hot]+[np.zeros([args.max_str_len, len(char_mapping)])]*(args.batch_size - 1))
-		model = SynthesisModel(
-			n_layers=args.n_layers, 
-			batch_size=args.batch_size, 
-			num_units=args.lstm_size, 
-			K=args.K,
-			M=args.M,
-			n_chars=len(char_mapping), 
-			str_len=args.max_str_len,  
-			sampling_bias=args.bias
-			)
-		assert args.load_dir is not None, "Invalid load_dir."
-		model.generate(C, args.load_dir)
+		create_handwriting(args.line, 'save/model-29')
+
+	elif args.mode == 'predict':		
+		assert len(args.prior) < args.max_str_len, "Prior length should be less than %d"%args.max_str_len
+		# Predict sentence
+		os.chdir('language_model')
+		command = "python3 generate.py --mode generate --line \"{0}\" --words {1} --data_dir ptb/ --dataset ptb --lm ngram-lm --job_id job_0".format(args.prior, args.words)
+		os.system(command + "> temp")
+		os.chdir('..')
+		with open('language_model/temp', 'r') as f:
+			line = f.readlines()[-2].strip('\n')
+
+		print('Predicted text: ', line.strip('\n'))
+		create_handwriting(line, 'save/model-29')
 
 if __name__=='__main__':
 	main(args)
