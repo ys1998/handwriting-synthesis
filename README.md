@@ -5,3 +5,5 @@
 **Title :** Handwriting Synthesis and Text Prediction using RNNs
 
 **Based on :** "Generating Sequences using Recurrent Neural Networks" by Alex Graves [\[pdf\]](https://arxiv.org/pdf/1308.0850.pdf).
+
+You can find our report [here](160050002_160050067.pdf).
